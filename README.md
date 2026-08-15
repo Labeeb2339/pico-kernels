@@ -62,6 +62,24 @@ the single-pass online-softmax avoids materializing the `N × N` score matrix,
 which is what makes the O(N²)→O(N) memory win and the speed win concrete.
 (Comparison includes torch SDPA's per-call dispatch overhead.)
 
+### FlashAttention backward
+
+`attention_bwd.py` computes `dQ, dK, dV` from `dO` — also fused, and also without
+materializing `N × N`. Softmax stats are recomputed in a first pass, then
+`dV = P^T dO`, `dP = dO V^T`, `dS = P ⊙ (dP - D)` with `D = rowsum(dO·O)`, and
+`dQ/dK` accumulate across key tiles (with atomics for the cross-tile reductions).
+Gradients match PyTorch autograd of an eager attention to **~1e-3 max abs err
+(fp16) / ~6e-3 (bf16)**.
+
+Forward+backward speedup vs eager (which materializes `N × N`):
+
+| N    | vs eager (fwd+bwd) |
+|------|--------------------|
+| 256  | 3.75×              |
+| 512  | 2.69×              |
+| 1024 | 5.69×              |
+| 2048 | 6.93×              |
+
 ### GPTQ quantization (applied to PicoLM)
 
 Perplexity of PicoLM (a 10.6M-param from-scratch GPT, fp perplexity 4.62) after
@@ -123,10 +141,12 @@ python gemm.py
 gemm.py                  # tiled GEMM + autotune + benchmark
 gemm_fp8.py              # fp8 (e4m3) scaled GEMM + benchmark (Blackwell)
 attention.py             # FlashAttention (causal) + benchmark
+attention_bwd.py         # FlashAttention backward (fused) + benchmark
 quantize.py              # GPTQ vs RTN quantization (applied to PicoLM)
 tests/test_gemm.py       # GEMM correctness (GPU-gated)
 tests/test_gemm_fp8.py   # fp8 GEMM correctness (GPU-gated)
 tests/test_attention.py  # attention correctness + causality (GPU-gated)
+tests/test_attention_bwd.py  # backward correctness vs autograd (GPU-gated)
 ```
 
 ## Roadmap
