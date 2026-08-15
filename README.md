@@ -1,15 +1,19 @@
 # ⚡ PicoKernels — GPU kernels from scratch
 
-**A from-scratch matrix-multiplication (GEMM) kernel in Triton that holds parity with — and often beats — NVIDIA's cuBLAS.**
+**From-scratch GPU kernels in Triton — a GEMM that matches cuBLAS, and a FlashAttention that beats torch's fused attention.**
 
 No `cublas`, no vendor calls. Just the tiling, shared-memory blocking, tensor-core
-`tl.dot`, and L2-cache swizzling that make GEMM fast, written from first
-principles and autotuned.
+`tl.dot`, L2-cache swizzling, and online-softmax — written from first principles
+and benchmarked rigorously.
 
 ## Results
 
 Measured on an NVIDIA RTX 5070 Laptop GPU (Blackwell, sm_120), `torch 2.11.0+cu128`,
-Triton 3.7.1. Numbers are **Triton ÷ cuBLAS** (ratio of GFLOPS), so **> 1.0 means the
+Triton 3.7.1.
+
+### GEMM
+
+Numbers are **Triton ÷ cuBLAS** (ratio of GFLOPS), so **> 1.0 means the
 from-scratch kernel is faster than NVIDIA's library**:
 
 | dtype | 512² | 1024² | 2048² | 4096² |
@@ -21,7 +25,25 @@ Peak throughput ~47–48 TFLOPS fp16 at 4096². Correctness is verified against
 `torch.matmul` (max abs err ≈ 3e-4 for fp16, ≈ 2e-4 for bf16 — pure fp32-accumulate
 rounding noise).
 
-## Why it's fast
+### FlashAttention (causal forward)
+
+Speedup vs eager attention and vs `torch.nn.functional.scaled_dot_product_attention`
+(cuDNN's fused FlashAttention). Batch 4, 8 heads, head dim 64, fp16:
+
+| N (seq len) | vs eager | vs torch SDPA |
+|-------------|----------|---------------|
+| 256   | 9.2×  | 1.69× |
+| 512   | 24.7× | 1.80× |
+| 1024  | 34.0× | 1.87× |
+| 2048  | 37.7× | 1.88× |
+| 4096  | 39.3× | 1.79× |
+
+The from-scratch kernel is **~1.8× faster than NVIDIA's own fused attention** —
+the single-pass online-softmax avoids materializing the `N × N` score matrix,
+which is what makes the O(N²)→O(N) memory win and the speed win concrete.
+(Comparison includes torch SDPA's per-call dispatch overhead.)
+
+## Why it's fast (GEMM)
 
 1. **Tiling** — the `M × N` output is split into `BLOCK_M × BLOCK_N` tiles and the
    `K` reduction is chunked into `BLOCK_K` steps, so each tile stays in registers
@@ -58,12 +80,13 @@ python gemm.py
 ## Files
 
 ```
-gemm.py              # the kernel + autotune + benchmark
-tests/test_gemm.py   # correctness checks (GPU-gated, skips on CPU)
+gemm.py                  # tiled GEMM + autotune + benchmark
+attention.py             # FlashAttention (causal) + benchmark
+tests/test_gemm.py       # GEMM correctness (GPU-gated)
+tests/test_attention.py  # attention correctness + causality (GPU-gated)
 ```
 
 ## Roadmap
 
-This is the first rung of a from-scratch systems stack. Next: a FlashAttention-style
-fused attention kernel (the same GEMM structure plus an online-softmax), then
-GPTQ-style quantization — each benchmarked with the same rigor.
+Next: GPTQ-style quantization from scratch, then a from-scratch diffusion model —
+each benchmarked with the same rigor.
