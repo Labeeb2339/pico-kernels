@@ -16,3 +16,4 @@ env/
 Thumbs.db
 .idea/
 .vscode/
+gptq_results.txt

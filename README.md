@@ -43,6 +43,27 @@ the single-pass online-softmax avoids materializing the `N × N` score matrix,
 which is what makes the O(N²)→O(N) memory win and the speed win concrete.
 (Comparison includes torch SDPA's per-call dispatch overhead.)
 
+### GPTQ quantization (applied to PicoLM)
+
+Perplexity of PicoLM (a 10.6M-param from-scratch GPT, fp perplexity 4.62) after
+quantizing all 24 transformer linears with naive round-to-nearest (RTN) vs GPTQ's
+inverse-Hessian error compensation:
+
+| bits | RTN ppl | GPTQ ppl |
+|------|---------|----------|
+| 8    | 4.59    | 4.59     |
+| 6    | 4.58    | 4.61     |
+| **4**| 4.71    | **4.63** |
+| **3**| 5.32    | **4.99** |
+| 2    | 33.19   | **20.75**|
+
+At **4-bit, GPTQ is essentially lossless** (+0.013 ppl ≈ 0.3%) while RTN degrades
+~7× more (+0.088). The inverse-Hessian update moves each weight's rounding error
+onto the weights that follow it, so the layer output stays near-identical — 4-bit
+is 4× smaller than fp16, 8× smaller than fp32, at almost no quality cost.
+
+Run it against a PicoLM checkpoint: `python quantize.py --ckpt <picolm>/out/ckpt.pt`.
+
 ## Why it's fast (GEMM)
 
 1. **Tiling** — the `M × N` output is split into `BLOCK_M × BLOCK_N` tiles and the
@@ -82,11 +103,13 @@ python gemm.py
 ```
 gemm.py                  # tiled GEMM + autotune + benchmark
 attention.py             # FlashAttention (causal) + benchmark
+quantize.py              # GPTQ vs RTN quantization (applied to PicoLM)
 tests/test_gemm.py       # GEMM correctness (GPU-gated)
 tests/test_attention.py  # attention correctness + causality (GPU-gated)
 ```
 
 ## Roadmap
 
-Next: GPTQ-style quantization from scratch, then a from-scratch diffusion model —
-each benchmarked with the same rigor.
+The from-scratch diffusion model (DDPM + DDIM U-Net) lives in its own repo:
+[`pico-diffusion`](https://github.com/Labeeb2339/pico-diffusion) — same rigor,
+different modality.
