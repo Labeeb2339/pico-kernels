@@ -80,6 +80,22 @@ Forward+backward speedup vs eager (which materializes `N × N`):
 | 1024 | 5.69×              |
 | 2048 | 6.93×              |
 
+### FlashDecoding + KV cache (decode)
+
+`flash_decoding.py` adds the two pieces that make *generation* fast: a **KV
+cache** (stores past keys/values so each token attends only to the cached
+prefix) and a **FlashDecoding-style split-KV kernel** — during decode `M=1`, so
+the KV sequence is split across blocks and the per-split `(max, sum, acc)` are
+reduced with the same online-softmax rescaling. Speedup vs eager single-token
+decode:
+
+| N    | vs eager decode |
+|------|-----------------|
+| 1024 | 1.4×            |
+| 2048 | 5.8×            |
+| 4096 | 2.4×            |
+| 8192 | 5.7×            |
+
 ### GPTQ quantization (applied to PicoLM)
 
 Perplexity of PicoLM (a 10.6M-param from-scratch GPT, fp perplexity 4.62) after
@@ -159,14 +175,18 @@ python gemm.py
 gemm.py                  # tiled GEMM + autotune + benchmark
 gemm_fp8.py              # fp8 (e4m3) scaled GEMM + benchmark (Blackwell)
 gemm_int4.py             # packed INT4 GEMM + benchmark (memory-bound win)
+gemm_splitk.py           # split-K GEMM (documented failure case)
 attention.py             # FlashAttention (causal) + benchmark
 attention_bwd.py         # FlashAttention backward (fused) + benchmark
+flash_decoding.py        # KV cache + FlashDecoding (decode)
 quantize.py              # GPTQ vs RTN quantization (applied to PicoLM)
 tests/test_gemm.py       # GEMM correctness (GPU-gated)
 tests/test_gemm_fp8.py   # fp8 GEMM correctness (GPU-gated)
 tests/test_gemm_int4.py  # INT4 GEMM correctness (GPU-gated)
+tests/test_gemm_splitk.py  # split-K GEMM correctness (GPU-gated)
 tests/test_attention.py  # attention correctness + causality (GPU-gated)
 tests/test_attention_bwd.py  # backward correctness vs autograd (GPU-gated)
+tests/test_flash_decoding.py  # flash-decoding + KV cache correctness (GPU-gated)
 ```
 
 ## Roadmap
