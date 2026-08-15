@@ -37,28 +37,46 @@ from picolm.training import get_batch
 # ---------------------------------------------------------------------------
 # Quantization primitives
 # ---------------------------------------------------------------------------
-def quantize_col(w: torch.Tensor, bits: int) -> torch.Tensor:
-    """Symmetric per-column (per input-dim) round-to-nearest quantization."""
+def quantize_col(w: torch.Tensor, bits: int, group_size: int | None = None) -> torch.Tensor:
+    """Symmetric round-to-nearest quantization of a column ``[out]``.
+
+    ``group_size=None`` uses a single per-column scale; otherwise output rows are
+    quantized in groups of ``group_size`` with a shared scale per group (the
+    standard LLM group-quant scheme).
+    """
     if bits >= 16:
         return w
     qmax = 2 ** (bits - 1) - 1  # e.g. 127 for int8, 3 for 2-bit
-    scale = w.abs().max().clamp_min(1e-12) / qmax
-    return torch.clamp(torch.round(w / scale), -qmax, qmax) * scale
+    if group_size is None:
+        scale = w.abs().max().clamp_min(1e-12) / qmax
+        return torch.clamp(torch.round(w / scale), -qmax, qmax) * scale
+    wq = w.clone()
+    for g in range(0, w.numel(), group_size):
+        sl = slice(g, min(g + group_size, w.numel()))
+        scale = w[sl].abs().max().clamp_min(1e-12) / qmax
+        wq[sl] = torch.clamp(torch.round(w[sl] / scale), -qmax, qmax) * scale
+    return wq
 
 
-def rtn_layer(w: torch.Tensor, bits: int) -> torch.Tensor:
+def rtn_layer(w: torch.Tensor, bits: int, group_size: int | None = None) -> torch.Tensor:
     """Naive round-to-nearest over every column — the GPTQ baseline."""
     wq = w.float().clone()
     for j in range(wq.shape[1]):
-        wq[:, j] = quantize_col(wq[:, j], bits)
+        wq[:, j] = quantize_col(wq[:, j], bits, group_size)
     return wq.to(w.dtype)
 
 
-def gptq_layer(w: torch.Tensor, x: torch.Tensor, bits: int, damp: float = 0.01) -> torch.Tensor:
+def gptq_layer(
+    w: torch.Tensor, x: torch.Tensor, bits: int,
+    damp: float = 0.01, act_order: bool = True, group_size: int | None = None,
+) -> torch.Tensor:
     """GPTQ-quantize one linear layer ``w`` (``[out, in]``) given activations ``x``.
 
     ``x`` has shape ``[n, in]`` (calibration samples flattened over batch and
-    sequence). Returns the quantized weight of the same shape.
+    sequence). ``act_order`` reorders input columns by activation energy (the
+    activation-ordering trick from the GPTQ paper) so the highest-energy columns
+    are quantized first and their error is absorbed by the rest. ``group_size``
+    (optional) quantizes output rows in groups with a shared scale.
     """
     if bits >= 16:
         return w.clone()
@@ -68,18 +86,30 @@ def gptq_layer(w: torch.Tensor, x: torch.Tensor, bits: int, damp: float = 0.01) 
     # Hessian H = X^T X / n, with damping for numerical stability.
     xf = x.float()
     H = (xf.t() @ xf) / n
-    diag_mean = torch.diag(H).mean()
+    act_mag = torch.diag(H).clone()  # activation energy per input column (pre-damping)
+    diag_mean = act_mag.mean()
     H = H + damp * diag_mean * torch.eye(in_dim, device=H.device)
     H_inv = torch.linalg.inv(H)  # [in, in]
 
     wq = w.float().clone()
+
+    order = None
+    if act_order:
+        order = torch.argsort(act_mag, descending=True)
+        wq = wq[:, order]
+        H_inv = H_inv[order][:, order]
+
     for j in range(in_dim):
         col = wq[:, j]                      # [out]
-        q = quantize_col(col, bits)         # [out]
+        q = quantize_col(col, bits, group_size)  # [out]
         err = col - q                       # [out] — the rounding error
         ratio = H_inv[j, j + 1:] / H_inv[j, j]  # [in - j - 1]
         wq[:, j + 1:] -= torch.outer(err, ratio)  # absorb the error
         wq[:, j] = q
+
+    if order is not None:
+        wq = wq[:, torch.argsort(order)]  # un-permute back to original column order
+
     return wq.to(w.dtype)
 
 

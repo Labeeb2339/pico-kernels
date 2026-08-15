@@ -124,6 +124,13 @@ At **4-bit, GPTQ is essentially lossless** (+0.013 ppl ≈ 0.3%) while RTN degra
 onto the weights that follow it, so the layer output stays near-identical — 4-bit
 is 4× smaller than fp16, 8× smaller than fp32, at almost no quality cost.
 
+`gptq_layer` also supports **activation-ordering** (`act_order`, the column-reorder
+trick from the GPTQ paper — highest-energy columns quantized first) and
+**per-group output quantization** (`group_size`, shared scale per output group).
+Act-ordering is permutation-consistent (unit-tested); its benefit over the OBQ
+update alone is modest in synthetic tests but is the standard quality lever for
+3-bit/2-bit.
+
 Run it against a PicoLM checkpoint: `python quantize.py --ckpt <picolm>/out/ckpt.pt`.
 
 ### INT4 inference (the speedup behind 4-bit GPTQ)
