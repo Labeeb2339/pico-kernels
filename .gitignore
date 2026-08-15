@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Triton JIT cache
+.triton/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -1,0 +1,8 @@
+# Install torch first with the CUDA wheel, then triton.
+# torch:  pip install torch --index-url https://download.pytorch.org/whl/cu128
+# triton (Windows): pip install triton-windows
+# triton (Linux/WSL2): pip install triton
+
+torch>=2.4
+triton-windows>=3.5; platform_system == "Windows"
+triton>=3.5; platform_system != "Windows"
