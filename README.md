@@ -101,6 +101,24 @@ is 4× smaller than fp16, 8× smaller than fp32, at almost no quality cost.
 
 Run it against a PicoLM checkpoint: `python quantize.py --ckpt <picolm>/out/ckpt.pt`.
 
+### INT4 inference (the speedup behind 4-bit GPTQ)
+
+`gemm_int4.py` packs 4-bit weights 2-per-byte and decompresses them in-kernel.
+The win is **bandwidth, not FLOPs**: a quantized linear layer reads 4× fewer
+weight bytes, which pays off exactly in the memory-bound regime (small batch =
+LLM decode). Measured on this GPU:
+
+| shape (M,N,K)      | fp16   | int4   | speedup | regime        |
+|--------------------|--------|--------|---------|---------------|
+| (16, 4096, 4096)   | 5.3 T  | 6.3 T  | 1.19×   | memory-bound  |
+| (16, 8192, 8192)   | 5.3 T  | 7.5 T  | 1.40×   | memory-bound  |
+| (1024, 4096, 4096) | 45.9 T | 36.6 T | 0.80×   | mixed         |
+| (4096, 4096, 4096) | 44.7 T | 30.0 T | 0.67×   | compute-bound |
+
+**~1.2–1.4× faster for decode-shaped matmuls, not faster (and slightly slower)
+for compute-bound ones** — the honest two-regime picture of 4-bit inference.
+Decompression is exact (0% error vs the fp16-quantized reference).
+
 ## Why it's fast (GEMM)
 
 1. **Tiling** — the `M × N` output is split into `BLOCK_M × BLOCK_N` tiles and the
@@ -140,11 +158,13 @@ python gemm.py
 ```
 gemm.py                  # tiled GEMM + autotune + benchmark
 gemm_fp8.py              # fp8 (e4m3) scaled GEMM + benchmark (Blackwell)
+gemm_int4.py             # packed INT4 GEMM + benchmark (memory-bound win)
 attention.py             # FlashAttention (causal) + benchmark
 attention_bwd.py         # FlashAttention backward (fused) + benchmark
 quantize.py              # GPTQ vs RTN quantization (applied to PicoLM)
 tests/test_gemm.py       # GEMM correctness (GPU-gated)
 tests/test_gemm_fp8.py   # fp8 GEMM correctness (GPU-gated)
+tests/test_gemm_int4.py  # INT4 GEMM correctness (GPU-gated)
 tests/test_attention.py  # attention correctness + causality (GPU-gated)
 tests/test_attention_bwd.py  # backward correctness vs autograd (GPU-gated)
 ```
