@@ -25,6 +25,25 @@ Peak throughput ~47–48 TFLOPS fp16 at 4096². Correctness is verified against
 `torch.matmul` (max abs err ≈ 3e-4 for fp16, ≈ 2e-4 for bf16 — pure fp32-accumulate
 rounding noise).
 
+### fp8 GEMM (Blackwell)
+
+Blackwell (sm_120) adds native fp8 (e4m3) tensor cores at ~2× the fp16 rate.
+`gemm_fp8.py` is a *scaled*-fp8 matmul: inputs are cast to e4m3 with per-tensor
+scale factors, the tensor-core matmul runs in fp8 with an fp32 accumulator, and
+the output is rescaled once in the epilogue.
+
+| size  | fp16 cuBLAS | fp8 triton | speedup |
+|-------|-------------|------------|---------|
+| 512²  | 18.8 T      | 21.0 T     | 1.11×   |
+| 1024² | 35.2 T      | 56.6 T     | 1.61×   |
+| 2048² | 46.1 T      | 76.7 T     | 1.67×   |
+| 4096² | 39.4 T      | 84.2 T     | **2.14×** |
+
+**~2.1× faster than cuBLAS fp16 at 4096²** — the fp8 tensor-core rate advantage,
+for real. Accuracy is the honest cost: **3.74% relative Frobenius error vs fp32**
+(e4m3 has a 3-bit mantissa). The cast/scale is an O(n²) memory pass done once
+(offline for weights); the O(n³) matmul is what's timed.
+
 ### FlashAttention (causal forward)
 
 Speedup vs eager attention and vs `torch.nn.functional.scaled_dot_product_attention`
@@ -102,9 +121,11 @@ python gemm.py
 
 ```
 gemm.py                  # tiled GEMM + autotune + benchmark
+gemm_fp8.py              # fp8 (e4m3) scaled GEMM + benchmark (Blackwell)
 attention.py             # FlashAttention (causal) + benchmark
 quantize.py              # GPTQ vs RTN quantization (applied to PicoLM)
 tests/test_gemm.py       # GEMM correctness (GPU-gated)
+tests/test_gemm_fp8.py   # fp8 GEMM correctness (GPU-gated)
 tests/test_attention.py  # attention correctness + causality (GPU-gated)
 ```
 
