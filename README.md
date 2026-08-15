@@ -96,6 +96,15 @@ decode:
 | 4096 | 2.4×            |
 | 8192 | 5.7×            |
 
+### Grouped-Query Attention (GQA)
+
+`attention_gqa.py` extends the causal FlashAttention to GQA (`H_q > H_kv`), the
+head structure used by Llama/Mistral/Gemma — each KV head is shared by
+`H_q / H_kv` query heads, shrinking the KV cache and KV bandwidth. Correctness
+is verified against an eager GQA reference; the fused kernel is **~34–38×
+faster** (the eager reference materializes the `N × N` matrix via KV repeat, the
+kernel never does).
+
 ### GPTQ quantization (applied to PicoLM)
 
 Perplexity of PicoLM (a 10.6M-param from-scratch GPT, fp perplexity 4.62) after
