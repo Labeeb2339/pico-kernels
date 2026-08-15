@@ -110,6 +110,11 @@ def triton_gemm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     M, K = a.shape
     K2, N = b.shape
     assert K == K2, "inner dims must match"
+    # The autotuned block sizes go up to 256; the kernel is mask-free, so dims
+    # must divide the block sizes (else a block would read/write out of bounds).
+    assert M % 256 == 0 and N % 256 == 0 and K % 64 == 0, (
+        f"mask-free kernel needs M,N divisible by 256 and K by 64 (got {M},{N},{K})"
+    )
     c = torch.empty((M, N), device=a.device, dtype=torch.float32)
     grid = lambda META: (  # noqa: E731 - grid needs META for autotune
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
@@ -138,20 +143,24 @@ def check_correctness(dtype: torch.dtype, M: int = 1024, K: int = 1024, N: int =
 
 
 def bench() -> None:
-    print(f"{'dtype':<7} {'M=N=K':>7} {'cuBLAS':>9} {'triton':>9} {'ratio':>7}")
-    print("-" * 42)
+    print(f"{'dtype':<7} {'M,N,K':>15} {'cuBLAS':>9} {'triton':>9} {'ratio':>7}")
+    print("-" * 50)
+    shapes = [
+        (512, 512, 512), (1024, 1024, 1024), (2048, 2048, 2048), (4096, 4096, 4096),
+        (256, 512, 1024), (512, 2048, 1024), (1024, 256, 2048), (256, 1024, 4096),
+    ]
     for dtype in (torch.float16, torch.bfloat16):
-        for size in (512, 1024, 2048, 4096):
-            a = torch.randn(size, size, device="cuda", dtype=dtype)
-            b = torch.randn(size, size, device="cuda", dtype=dtype)
-            flops = 2 * size**3 / 1e9  # GFLOP
+        for m, n, k in shapes:
+            a = torch.randn(m, k, device="cuda", dtype=dtype)
+            b = torch.randn(k, n, device="cuda", dtype=dtype)
+            flops = 2 * m * n * k / 1e9  # GFLOP
 
             ms_cublas = triton.testing.do_bench(lambda: a @ b)
             ms_triton = triton.testing.do_bench(lambda: triton_gemm(a, b))
 
             g_cublas = flops / (ms_cublas / 1e3)
             g_triton = flops / (ms_triton / 1e3)
-            print(f"{str(dtype):<7} {size:>7} {g_cublas:>7.0f} G {g_triton:>7.0f} G "
+            print(f"{str(dtype):<7} {(m, n, k)!s:>15} {g_cublas:>7.0f} G {g_triton:>7.0f} G "
                   f"{g_triton / g_cublas:>7.2f}x")
 
 

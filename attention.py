@@ -168,6 +168,16 @@ def bench() -> None:
         print(f"{N:>6} {ms_eager:>8.3f}m {ms_sdpa:>8.3f}m {ms_tri:>8.3f}m "
               f"{ms_eager / ms_tri:>8.2f}x {ms_sdpa / ms_tri:>8.2f}x")
 
+    # 32k: eager would materialize a (4,8,32768,32768) fp32 score matrix = 137 GB,
+    # so it OOMs on this GPU. The fused kernels keep O(N) memory and still run.
+    N = 32768
+    q = torch.randn(B, H, N, D, device="cuda", dtype=torch.float16)
+    k = torch.randn(B, H, N, D, device="cuda", dtype=torch.float16)
+    v = torch.randn(B, H, N, D, device="cuda", dtype=torch.float16)
+    ms_sdpa = triton.testing.do_bench(lambda: F.scaled_dot_product_attention(q, k, v, is_causal=True))
+    ms_tri = triton.testing.do_bench(lambda: triton_attention(q, k, v))
+    print(f"{N:>6} {'OOM':>9} {ms_sdpa:>8.3f}m {ms_tri:>8.3f}m {'—':>9} {ms_sdpa / ms_tri:>8.2f}x")
+
 
 if __name__ == "__main__":
     print("device:", torch.cuda.get_device_name(0), "| triton", triton.__version__)
