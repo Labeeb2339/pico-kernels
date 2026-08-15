@@ -39,19 +39,28 @@ def test_attention_matches_naive(dtype: torch.dtype, N: int) -> None:
 
 
 def test_attention_causality() -> None:
-    """The upper triangle (future keys) must not influence the output."""
+    """Future keys must not influence earlier queries (causal masking)."""
     torch.manual_seed(0)
-    N, D = 128, 32
-    q = torch.randn(1, 2, N, D, device="cuda", dtype=torch.float16)
-    k = torch.randn(1, 2, N, D, device="cuda", dtype=torch.float16)
-    v = torch.randn(1, 2, N, D, device="cuda", dtype=torch.float16)
+    N, D = 64, 32
+    B, H = 1, 2
+    q = torch.randn(B, H, N, D, device="cuda", dtype=torch.float16)
+    k = torch.randn(B, H, N, D, device="cuda", dtype=torch.float16)
+    v = torch.randn(B, H, N, D, device="cuda", dtype=torch.float16)
 
     out_a = attention.triton_attention(q, k, v)
 
-    # Zero out all *future* keys/values and recompute — output must be identical.
-    causal_mask = torch.tril(torch.ones(N, N, device="cuda", dtype=torch.bool))
-    k_masked = torch.where(causal_mask.T[:, :, None].unsqueeze(0), k, torch.zeros_like(k))
-    v_masked = torch.where(causal_mask.T[:, :, None].unsqueeze(0), v, torch.zeros_like(v))
-    out_b = attention.triton_attention(q, k_masked, v_masked)
+    # Garbage-ize the *last* key/value. A causal kernel's output for the first
+    # N-1 query positions must be unchanged (they never attend to the last key),
+    # while the last query (which attends to itself) must change.
+    k2 = k.clone()
+    k2[:, :, -1, :] = 100.0
+    v2 = v.clone()
+    v2[:, :, -1, :] = 100.0
+    out_b = attention.triton_attention(q, k2, v2)
 
-    assert torch.allclose(out_a.float(), out_b.float(), atol=5e-2, rtol=5e-2)
+    assert torch.allclose(
+        out_a[:, :, :-1, :].float(), out_b[:, :, :-1, :].float(), atol=1e-2, rtol=1e-2
+    ), "earlier query positions changed after mutating a future key"
+    assert not torch.allclose(
+        out_a[:, :, -1, :].float(), out_b[:, :, -1, :].float(), atol=1e-2, rtol=1e-2
+    ), "last query position should depend on the mutated last key"
