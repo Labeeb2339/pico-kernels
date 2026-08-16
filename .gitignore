@@ -11,6 +11,11 @@ env/
 # Triton JIT cache
 .triton/
 
+# Test / coverage
+.pytest_cache/
+.pytest-tmp/
+.coverage
+
 # OS / editor
 .DS_Store
 Thumbs.db
