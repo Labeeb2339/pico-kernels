@@ -241,4 +241,6 @@ tests/test_flash_decoding.py  # flash-decoding + KV cache correctness (GPU-gated
 
 The from-scratch diffusion model (DDPM + DDIM U-Net) lives in its own repo:
 [`pico-diffusion`](https://github.com/Labeeb2339/pico-diffusion) — same rigor,
-different modality.
+different modality. A from-scratch GGUF inference engine (GGML dequant + LLaMA
+forward + BPE) lives in [`pico-engine`](https://github.com/Labeeb2339/pico-engine),
+which serves a real Qwen2.5 model end to end.
