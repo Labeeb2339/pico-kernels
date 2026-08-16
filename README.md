@@ -11,6 +11,13 @@ and benchmarked rigorously.
 Measured on an NVIDIA RTX 5070 Laptop GPU (Blackwell, sm_120), `torch 2.11.0+cu128`,
 Triton 3.7.1.
 
+Every number below is reproduced by one command:
+
+```bash
+python bench.py          # run all nine benchmarks sequentially
+python bench.py --log    # also write the raw output to bench_output.txt
+```
+
 ### GEMM
 
 Numbers are **Triton ÷ cuBLAS** (ratio of GFLOPS), so **> 1.0 means the
