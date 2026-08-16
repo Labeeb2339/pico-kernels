@@ -8,19 +8,34 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  syntax:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       # Hosted runners have no CUDA device, so the Triton kernel tests
       # (gemm, attention, flash-decoding, fp8/int4/splitk) and the raw-CUDA
-      # NVRTC demo cannot execute here, and the GPTQ quant test imports PicoLM.
-      # They run locally on the RTX 5070 with `pytest tests/ -q` (see README for
-      # the measured numbers). This job keeps a floor: every source file must
-      # at least parse.
+      # NVRTC demo cannot execute here — they run locally on the RTX 5070 with
+      # `pytest tests/ -q` (see README for the measured numbers). This job
+      # keeps a floor: every source file must at least parse.
       - name: Syntax-check all Python sources
         run: python -m compileall -q .
+
+  quant:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # The GPTQ primitives (gptq_layer / quantize_col / rtn_layer) are pure
+      # torch and import cleanly without PicoLM (the picolm dependency is lazy,
+      # loaded only by the CLI driver), so these correctness tests run on CPU.
+      - name: Install CPU torch + pytest
+        run: |
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet pytest
+      - name: Run GPTQ primitive tests
+        run: python -m pytest tests/test_quantize.py -q

@@ -28,11 +28,6 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 
-from picolm.cli import _load_tokenizer
-from picolm.eval import model_perplexity
-from picolm.model import GPT
-from picolm.training import get_batch
-
 
 # ---------------------------------------------------------------------------
 # Quantization primitives
@@ -138,6 +133,8 @@ def _capture_inputs(
 ) -> torch.Tensor:
     """Run calibration batches through the (partially quantized) model and
     collect this layer's input activations."""
+    from picolm.training import get_batch  # picolm only needed for the driver
+
     inputs: list[torch.Tensor] = []
 
     def hook(_m, args):
@@ -181,6 +178,10 @@ def quantize_model(
 # Driver
 # ---------------------------------------------------------------------------
 def main() -> None:
+    from picolm.cli import _load_tokenizer
+    from picolm.eval import model_perplexity
+    from picolm.model import GPT
+
     ap = argparse.ArgumentParser(description="GPTQ vs RTN quantization of PicoLM")
     ap.add_argument("--ckpt", default="out/ckpt.pt")
     ap.add_argument("--text", default="data/input.txt")

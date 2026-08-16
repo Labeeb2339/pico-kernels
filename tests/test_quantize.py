@@ -7,7 +7,6 @@ import pytest
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))       # pico-kernels
-sys.path.insert(0, r"C:/Users/Labeeb/PicoLM/src")                   # picolm (quantize imports it)
 
 import quantize  # noqa: E402
 from quantize import gptq_layer, quantize_col, rtn_layer  # noqa: E402
