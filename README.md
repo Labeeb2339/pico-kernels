@@ -133,6 +133,14 @@ update alone is modest in synthetic tests but is the standard quality lever for
 
 Run it against a PicoLM checkpoint: `python quantize.py --ckpt <picolm>/out/ckpt.pt`.
 
+**Why "GPTQ vs RTN", not "GPTQ vs AutoGPTQ / llama.cpp".** AutoGPTQ implements
+the *same* GPTQ algorithm (Frantar et al., 2022) — a head-to-head would just
+reproduce these numbers, which tells you nothing new. llama.cpp quantizes with a
+different family entirely (GGML block-wise quants like `Q4_K_M`), so comparing
+perplexity is apples-to-oranges across methods rather than a validation of this
+one. The honest question "does GPTQ actually help?" is answered by the RTN
+baseline, which the table above isolates directly.
+
 ### INT4 inference (the speedup behind 4-bit GPTQ)
 
 `gemm_int4.py` packs 4-bit weights 2-per-byte and decompresses them in-kernel.
