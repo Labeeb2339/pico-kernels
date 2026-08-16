@@ -6,3 +6,7 @@
 torch>=2.4
 triton-windows>=3.5; platform_system == "Windows"
 triton>=3.5; platform_system != "Windows"
+
+# raw_gemm.py (the "below Triton" demo) compiles CUDA C through the NVRTC that
+# ships inside the torch wheel — cuda-python drives it. No toolkit install needed.
+cuda-python>=13.0

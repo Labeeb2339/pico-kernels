@@ -14,7 +14,7 @@ Triton 3.7.1.
 Every number below is reproduced by one command:
 
 ```bash
-python bench.py          # run all nine benchmarks sequentially
+python bench.py          # run all ten benchmarks sequentially
 python bench.py --log    # also write the raw output to bench_output.txt
 ```
 
@@ -31,6 +31,23 @@ from-scratch kernel is faster than NVIDIA's library**:
 Peak throughput ~47–48 TFLOPS fp16 at 4096². Correctness is verified against
 `torch.matmul` (max abs err ≈ 3e-4 for fp16, ≈ 2e-4 for bf16 — pure fp32-accumulate
 rounding noise).
+
+### Raw CUDA (below Triton)
+
+`raw_gemm.py` drops one layer lower: a hand-written CUDA C GEMM (16×16
+shared-memory tile, one output element per thread, no tensor cores) compiled at
+runtime by the NVRTC that ships inside the torch wheel and launched through the
+CUDA driver API — no Triton, no cuBLAS, no toolkit install.
+
+| kernel | fp32 TFLOPS (1024³) |
+|--------|---------------------|
+| cuBLAS (torch matmul) | 12.2 |
+| raw CUDA C (this)     | 1.9  |
+
+**6.3× slower than cuBLAS** — and that gap *is* the point. Tensor cores and fine
+register tiling are exactly what cuBLAS/Triton add on top of a raw baseline; this
+kernel makes those layers concrete. Correctness is verified against `torch.matmul`
+(max abs err ≈ 2e-4).
 
 ### fp8 GEMM (Blackwell)
 

@@ -35,6 +35,7 @@ KERNELS = (
     ("FlashDecoding + KV cache", "flash_decoding.py"),
     ("INT4 GEMM", "gemm_int4.py"),
     ("Split-K GEMM (failure case)", "gemm_splitk.py"),
+    ("Raw CUDA GEMM (below Triton)", "raw_gemm.py"),
     ("GPTQ vs RTN perplexity", "quantize.py"),
 )
 
