@@ -2,27 +2,30 @@
 """Run every kernel benchmark in one command and print a unified summary.
 
 Each kernel module ships a self-contained correctness + benchmark block under
-``if __name__ == "__main__"``. This runner executes them all sequentially and
-collects the headline number from each, so ``python bench.py`` reproduces the
-whole "Results" section of the README on a single GPU.
+``if __name__ == "__main__"``. This runner executes them all sequentially, so
+``python bench.py`` reproduces the whole "Results" section of the README on a
+single GPU.
+
+The GPTQ kernel applies quantization to a trained PicoLM checkpoint, so it
+needs a sibling PicoLM checkout. Pass ``--picolm-dir`` to point at it (default
+``../PicoLM``); the runner skips GPTQ with a note if no checkpoint is found.
 
 Usage:
-    python bench.py            # run everything, print a summary
-    python bench.py --log      # also write the full raw output to bench_output.txt
-    python bench.py --skip gptq # skip a kernel by name
+    python bench.py                 # run everything, print the results
+    python bench.py --log           # also write full raw output to bench_output.txt
+    python bench.py --skip gptq     # skip a kernel by name substring
 """
 
 from __future__ import annotations
 
 import argparse
-import re
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 
-# (name, module, headline description)
+# (name, module)
 KERNELS = (
     ("GEMM (fp16/bf16 vs cuBLAS)", "gemm.py"),
     ("fp8 GEMM (Blackwell)", "gemm_fp8.py"),
@@ -36,9 +39,9 @@ KERNELS = (
 )
 
 
-def run_kernel(module: str) -> str:
+def run_kernel(module: str, extra_args: tuple[str, ...] = ()) -> str:
     result = subprocess.run(
-        [sys.executable, str(ROOT / module)],
+        [sys.executable, str(ROOT / module), *extra_args],
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -49,38 +52,16 @@ def run_kernel(module: str) -> str:
     return result.stdout
 
 
-def headline(name: str, output: str) -> str:
-    """Pull the single most interesting number out of a kernel's output."""
-    patterns = (
-        # gemm.py: "fp16  ... 1.14x"
-        (r"(fp16\s+\S+\s+\S+\s+\S+\s+[\d.]+x)", "fp16 GEMM vs cuBLAS"),
-        # gemm_fp8.py: "4096²  39.4 T  84.2 T  2.14×"
-        (r"(4096²\s+[\d.]+\s*T\s+[\d.]+\s*T\s+([\d.]+)×)", "fp8 GEMM speedup @4096²"),
-        # attention.py: "4096  39.3x ..." (vs eager)
-        (r"(4096\s+[\d.]+x\s+[\d.]+x)", "FlashAttention vs eager @4096"),
-        # attention_bwd.py: "2048  6.93x"
-        (r"(2048\s+[\d.]+x)", "FA backward @2048"),
-        # attention_gqa.py: max speedup
-        (r"(gqa[\s\S]{0,120}?[\d.]+x)", "GQA"),
-        # flash_decoding.py
-        (r"(2048\s+[\d.]+x)", "FlashDecoding @2048"),
-        # gemm_int4.py
-        (r"(decode[\s\S]{0,80}?[\d.]+x)", "INT4 decode"),
-        # quantize.py: "4  4.71  4.63"
-        (r"(\s*4\s+[\d.]+\s+[\d.]+)", "GPTQ 4-bit ppl"),
-    )
-    for pat, _label in patterns:
-        m = re.search(pat, output)
-        if m:
-            return m.group(1).strip()
-    return "(see output)"
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--log", action="store_true", help="write full raw output to bench_output.txt")
     parser.add_argument("--skip", action="append", default=[], help="skip a kernel by name substring")
+    parser.add_argument("--picolm-dir", default="../PicoLM", help="sibling PicoLM checkout for the GPTQ kernel")
     args = parser.parse_args()
+
+    picolm = (ROOT / args.picolm_dir).resolve()
+    gptq_ckpt = picolm / "out" / "ckpt.pt"
+    gptq_text = picolm / "data" / "input.txt"
 
     python = Path(sys.executable)
     print(f"=== pico-kernels benchmark suite ({python.name} {sys.version.split()[0]}) ===\n")
@@ -91,7 +72,14 @@ def main() -> None:
             print(f"[skip] {name}")
             continue
         print(f"--- {name} ---")
-        output = run_kernel(module)
+        extra_args: tuple[str, ...] = ()
+        if module == "quantize.py":
+            if not gptq_ckpt.exists():
+                print(f"[skip] GPTQ needs a PicoLM checkpoint; none at {gptq_ckpt} "
+                      f"(pass --picolm-dir or train PicoLM first)\n")
+                continue
+            extra_args = ("--ckpt", str(gptq_ckpt), "--text", str(gptq_text))
+        output = run_kernel(module, extra_args)
         full_log.append(f"===== {name} ({module}) =====\n{output}\n")
         print(output.strip()[-4000:])
         print()
