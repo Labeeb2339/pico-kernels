@@ -24,9 +24,16 @@ import argparse
 import math
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import torch
 import torch.nn as nn
+
+if TYPE_CHECKING:
+    from picolm.model import GPT
+else:
+    # Keep this module importable before the sibling PicoLM checkout is located.
+    GPT = Any
 
 
 # ---------------------------------------------------------------------------
@@ -178,10 +185,6 @@ def quantize_model(
 # Driver
 # ---------------------------------------------------------------------------
 def main() -> None:
-    from picolm.cli import _load_tokenizer
-    from picolm.eval import model_perplexity
-    from picolm.model import GPT
-
     ap = argparse.ArgumentParser(description="GPTQ vs RTN quantization of PicoLM")
     ap.add_argument("--ckpt", default="out/ckpt.pt")
     ap.add_argument("--text", default="data/input.txt")
@@ -191,8 +194,29 @@ def main() -> None:
     ap.add_argument("--batch-size", type=int, default=64)
     args = ap.parse_args()
 
+    # A sibling PicoLM checkout uses a ``src/`` package layout.  Make the
+    # documented ``--ckpt <picolm>/out/ckpt.pt`` command work without requiring
+    # users to editable-install PicoLM into the kernel environment first.
+    ckpt_path = Path(args.ckpt).resolve()
+    picolm_src = ckpt_path.parent.parent / "src"
+    if (picolm_src / "picolm").is_dir():
+        sys.path.insert(0, str(picolm_src))
+
+    try:
+        from picolm.cli import _load_tokenizer
+        from picolm.eval import model_perplexity
+        from picolm.model import GPT
+    except ModuleNotFoundError as exc:
+        if exc.name == "picolm":
+            raise SystemExit(
+                "PicoLM is not importable. Point --ckpt at a PicoLM checkout "
+                "(<repo>/out/ckpt.pt), or install it with `pip install -e <repo>`."
+            ) from exc
+        raise
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"device: {torch.cuda.get_device_name(0)} | checkpoint: {args.ckpt}")
+    device_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU"
+    print(f"device: {device_name} | checkpoint: {args.ckpt}")
 
     tok = _load_tokenizer(Path(args.ckpt).parent)
     ids = torch.tensor(tok.encode(Path(args.text).read_text(encoding="utf-8")), dtype=torch.long)
@@ -230,9 +254,9 @@ def main() -> None:
             rows.append((method, bits, ppl))
 
     print("\n=== summary (perplexity, lower is better) ===")
-    print(f"{'method':>6} {'bits':>4} {'perplexity':>11} {'Δ vs fp':>9}")
+    print(f"{'method':>6} {'bits':>4} {'perplexity':>11} {'delta':>9}")
     print("-" * 36)
-    print(f"{'fp':>6} {'-':>4} {base_ppl:>11.3f} {'—':>9}")
+    print(f"{'fp':>6} {'-':>4} {base_ppl:>11.3f} {'-':>9}")
     for method, bits, ppl in rows:
         print(f"{method:>6} {bits:>4} {ppl:>11.3f} {ppl - base_ppl:>+9.3f}")
 

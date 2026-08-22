@@ -89,7 +89,7 @@ def main() -> None:
     ms_cublas = triton.testing.do_bench(lambda: A @ B)
     ms_raw = triton.testing.do_bench(lambda: run(A, B, C, M, N, K))
     flops = 2 * M * N * K
-    print("=== benchmark (fp32, 1024^3 — higher is better) ===")
+    print("=== benchmark (fp32, 1024^3 - higher is better) ===")
     print(f"cuBLAS fp32:      {flops / (ms_cublas / 1e3) / 1e12:6.1f} TFLOPS")
     print(f"raw CUDA fp32:    {flops / (ms_raw / 1e3) / 1e12:6.1f} TFLOPS")
     print(f"cuBLAS is {ms_raw / ms_cublas:.1f}x faster (tensor cores + register tiling)")

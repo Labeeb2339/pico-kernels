@@ -18,6 +18,18 @@ python bench.py          # run all ten benchmarks sequentially
 python bench.py --log    # also write the raw output to bench_output.txt
 ```
 
+For an engineer-reviewable causal-attention run, use the provenance collector.
+It runs correctness before performance and records the Git/source fingerprint,
+runtime and GPU environment, exact commands, raw logs, exit codes, and log
+hashes. The source-to-invariant map and claim boundaries are documented in
+[`docs/attention_evidence.md`](docs/attention_evidence.md).
+
+```powershell
+$run = Get-Date -Format 'yyyyMMdd-HHmmss'
+.\.venv\Scripts\python.exe scripts\collect_attention_evidence.py `
+  --output-dir "evidence\runs\$run-attention"
+```
+
 ### GEMM
 
 Numbers are **Triton ÷ cuBLAS** (ratio of GFLOPS), so **> 1.0 means the

@@ -31,11 +31,19 @@ def test_attention_matches_naive(dtype: torch.dtype, N: int) -> None:
 
     out_tri = attention.triton_attention(q, k, v)
     ref = attention.eager_attention(q, k, v)
+    sdpa = torch.nn.functional.scaled_dot_product_attention(q, k, v, is_causal=True)
 
     assert torch.allclose(out_tri.float(), ref.float(), atol=5e-2, rtol=5e-2), (
         f"mismatch at N={N} dtype={dtype}: "
         f"max abs err {(out_tri.float() - ref.float()).abs().max().item():.3e}"
     )
+    assert torch.allclose(out_tri.float(), sdpa.float(), atol=5e-2, rtol=5e-2), (
+        f"SDPA mismatch at N={N} dtype={dtype}: "
+        f"max abs err {(out_tri.float() - sdpa.float()).abs().max().item():.3e}"
+    )
+    assert out_tri.shape == q.shape
+    assert out_tri.dtype == q.dtype
+    assert out_tri.device == q.device
 
 
 def test_attention_causality() -> None:
@@ -64,3 +72,35 @@ def test_attention_causality() -> None:
     assert not torch.allclose(
         out_a[:, :, -1, :].float(), out_b[:, :, -1, :].float(), atol=1e-2, rtol=1e-2
     ), "last query position should depend on the mutated last key"
+
+
+def test_attention_rejects_noncontiguous_input() -> None:
+    q = torch.randn(1, 2, 64, 32, device="cuda", dtype=torch.float16)
+    k = torch.randn(1, 2, 32, 64, device="cuda", dtype=torch.float16)
+    v = torch.randn_like(q)
+
+    with pytest.raises(ValueError, match="shapes must match"):
+        attention.triton_attention(q, k, v)
+
+    k = torch.randn_like(q).transpose(-2, -1).contiguous().transpose(-2, -1)
+    assert k.shape == q.shape and not k.is_contiguous()
+    with pytest.raises(ValueError, match="k must be contiguous"):
+        attention.triton_attention(q, k, v)
+
+
+def test_attention_rejects_unsupported_shape_and_dtype() -> None:
+    q = torch.randn(1, 2, 96, 32, device="cuda", dtype=torch.float16)
+    with pytest.raises(ValueError, match="N must be divisible"):
+        attention.triton_attention(q, q, q)
+
+    q32 = torch.randn(1, 2, 64, 32, device="cuda", dtype=torch.float32)
+    with pytest.raises(TypeError, match="fp16 or bf16"):
+        attention.triton_attention(q32, q32, q32)
+
+    q_bad_d = torch.randn(1, 2, 64, 48, device="cuda", dtype=torch.float16)
+    with pytest.raises(ValueError, match="D must be a power of two"):
+        attention.triton_attention(q_bad_d, q_bad_d, q_bad_d)
+
+    q_cpu = torch.randn(1, 2, 64, 32, dtype=torch.float16)
+    with pytest.raises(ValueError, match="CUDA tensor"):
+        attention.triton_attention(q_cpu, q_cpu, q_cpu)

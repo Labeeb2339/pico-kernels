@@ -25,6 +25,13 @@ import triton.language as tl
 import triton.testing
 
 
+# Keep the timing protocol explicit so a benchmark receipt can identify the
+# measurement, rather than relying on version-dependent helper defaults.
+BENCH_WARMUP_MS = 25
+BENCH_REP_MS = 100
+BENCH_RETURN_MODE = "median"
+
+
 # ---------------------------------------------------------------------------
 # Kernel (causal forward)
 # ---------------------------------------------------------------------------
@@ -94,12 +101,45 @@ def triton_attention(
 ) -> torch.Tensor:
     """FlashAttention forward on ``(B, H, N, D)`` tensors, causal, fp16/bf16.
 
-    ``q, k, v`` must be contiguous with shape ``(B, H, N, D)``.
+    ``q, k, v`` must be contiguous CUDA tensors with identical ``(B, H, N, D)``
+    shapes and fp16/bf16 dtype. This kernel implements causal attention with
+    scale ``1 / sqrt(D)`` and no dropout, additive bias, or padding mask.
     """
-    assert q.is_cuda and q.dtype in (torch.float16, torch.bfloat16)
-    assert q.shape == k.shape == v.shape, "q/k/v shapes must match"
+    tensors = {"q": q, "k": k, "v": v}
+    for name, tensor in tensors.items():
+        if tensor.ndim != 4:
+            raise ValueError(f"{name} must have shape (B, H, N, D); got {tuple(tensor.shape)}")
+        if not tensor.is_cuda:
+            raise ValueError(f"{name} must be a CUDA tensor")
+        if tensor.dtype not in (torch.float16, torch.bfloat16):
+            raise TypeError(f"{name} must use fp16 or bf16; got {tensor.dtype}")
+        if not tensor.is_contiguous():
+            raise ValueError(f"{name} must be contiguous")
+    if q.shape != k.shape or q.shape != v.shape:
+        raise ValueError(
+            f"q/k/v shapes must match; got q={tuple(q.shape)}, "
+            f"k={tuple(k.shape)}, v={tuple(v.shape)}"
+        )
+    if q.dtype != k.dtype or q.dtype != v.dtype:
+        raise TypeError(f"q/k/v dtypes must match; got {q.dtype}, {k.dtype}, {v.dtype}")
+    if q.device != k.device or q.device != v.device:
+        raise ValueError(f"q/k/v devices must match; got {q.device}, {k.device}, {v.device}")
+
     B, H, N, D = q.shape
-    assert N % BLOCK_M == 0 and N % BLOCK_N == 0, "N must divide the block sizes"
+    if min(B, H, N, D) <= 0:
+        raise ValueError(f"B, H, N, and D must be positive; got {tuple(q.shape)}")
+    if BLOCK_M <= 0 or BLOCK_M & (BLOCK_M - 1):
+        raise ValueError(f"BLOCK_M must be a positive power of two; got {BLOCK_M}")
+    if BLOCK_N <= 0 or BLOCK_N & (BLOCK_N - 1):
+        raise ValueError(f"BLOCK_N must be a positive power of two; got {BLOCK_N}")
+    if N % BLOCK_M != 0 or N % BLOCK_N != 0:
+        raise ValueError(
+            f"N must be divisible by BLOCK_M and BLOCK_N; got "
+            f"N={N}, BLOCK_M={BLOCK_M}, BLOCK_N={BLOCK_N}"
+        )
+    if D < 16 or D & (D - 1):
+        raise ValueError(f"D must be a power of two and at least 16; got {D}")
+
     sm_scale = 1.0 / math.sqrt(D)
     o = torch.empty_like(q)
     grid = (B * H * triton.cdiv(N, BLOCK_M),)
@@ -154,6 +194,12 @@ def check_correctness(dtype: torch.dtype, B: int = 4, H: int = 8, N: int = 512, 
 
 def bench() -> None:
     B, H, D = 4, 8, 64
+    torch.manual_seed(0)
+    print(
+        "protocol: fixed provider order eager -> SDPA -> Triton | "
+        f"warmup={BENCH_WARMUP_MS}ms rep={BENCH_REP_MS}ms "
+        f"stat={BENCH_RETURN_MODE} | seed=0 | B={B} H={H} D={D} fp16"
+    )
     print(f"{'N':>6} {'eager':>9} {'SDPA':>9} {'triton':>9} {'vs eager':>9} {'vs SDPA':>9}")
     print("-" * 58)
     for N in (256, 512, 1024, 2048, 4096):
@@ -161,9 +207,24 @@ def bench() -> None:
         k = torch.randn(B, H, N, D, device="cuda", dtype=torch.float16)
         v = torch.randn(B, H, N, D, device="cuda", dtype=torch.float16)
 
-        ms_eager = triton.testing.do_bench(lambda: eager_attention(q, k, v))
-        ms_sdpa = triton.testing.do_bench(lambda: F.scaled_dot_product_attention(q, k, v, is_causal=True))
-        ms_tri = triton.testing.do_bench(lambda: triton_attention(q, k, v))
+        ms_eager = triton.testing.do_bench(
+            lambda: eager_attention(q, k, v),
+            warmup=BENCH_WARMUP_MS,
+            rep=BENCH_REP_MS,
+            return_mode=BENCH_RETURN_MODE,
+        )
+        ms_sdpa = triton.testing.do_bench(
+            lambda: F.scaled_dot_product_attention(q, k, v, is_causal=True),
+            warmup=BENCH_WARMUP_MS,
+            rep=BENCH_REP_MS,
+            return_mode=BENCH_RETURN_MODE,
+        )
+        ms_tri = triton.testing.do_bench(
+            lambda: triton_attention(q, k, v),
+            warmup=BENCH_WARMUP_MS,
+            rep=BENCH_REP_MS,
+            return_mode=BENCH_RETURN_MODE,
+        )
 
         print(f"{N:>6} {ms_eager:>8.3f}m {ms_sdpa:>8.3f}m {ms_tri:>8.3f}m "
               f"{ms_eager / ms_tri:>8.2f}x {ms_sdpa / ms_tri:>8.2f}x")
@@ -174,9 +235,19 @@ def bench() -> None:
     q = torch.randn(B, H, N, D, device="cuda", dtype=torch.float16)
     k = torch.randn(B, H, N, D, device="cuda", dtype=torch.float16)
     v = torch.randn(B, H, N, D, device="cuda", dtype=torch.float16)
-    ms_sdpa = triton.testing.do_bench(lambda: F.scaled_dot_product_attention(q, k, v, is_causal=True))
-    ms_tri = triton.testing.do_bench(lambda: triton_attention(q, k, v))
-    print(f"{N:>6} {'OOM':>9} {ms_sdpa:>8.3f}m {ms_tri:>8.3f}m {'—':>9} {ms_sdpa / ms_tri:>8.2f}x")
+    ms_sdpa = triton.testing.do_bench(
+        lambda: F.scaled_dot_product_attention(q, k, v, is_causal=True),
+        warmup=BENCH_WARMUP_MS,
+        rep=BENCH_REP_MS,
+        return_mode=BENCH_RETURN_MODE,
+    )
+    ms_tri = triton.testing.do_bench(
+        lambda: triton_attention(q, k, v),
+        warmup=BENCH_WARMUP_MS,
+        rep=BENCH_REP_MS,
+        return_mode=BENCH_RETURN_MODE,
+    )
+    print(f"{N:>6} {'OOM':>9} {ms_sdpa:>8.3f}m {ms_tri:>8.3f}m {'-':>9} {ms_sdpa / ms_tri:>8.2f}x")
 
 
 if __name__ == "__main__":

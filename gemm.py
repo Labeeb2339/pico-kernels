@@ -169,5 +169,5 @@ if __name__ == "__main__":
     print("=== correctness (tensor-core dtypes) ===")
     check_correctness(torch.float16)
     check_correctness(torch.bfloat16)
-    print("=== benchmark (autotuned, GFLOPS — higher is better) ===")
+    print("=== benchmark (autotuned, GFLOPS - higher is better) ===")
     bench()

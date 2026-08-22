@@ -133,5 +133,5 @@ if __name__ == "__main__":
     print("device:", torch.cuda.get_device_name(0), "| triton", triton.__version__)
     print("=== correctness (int4 vs quantized fp16 ref) ===")
     check_correctness()
-    print("=== benchmark (GFLOPS — memory-bound is the win) ===")
+    print("=== benchmark (GFLOPS - memory-bound is the win) ===")
     bench()

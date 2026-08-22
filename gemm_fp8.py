@@ -159,5 +159,5 @@ if __name__ == "__main__":
     print("device:", torch.cuda.get_device_name(0), "| triton", triton.__version__)
     print("=== correctness (fp8 vs fp32 reference) ===")
     check_correctness()
-    print("=== benchmark (GFLOPS — higher is better; cast is pre-done) ===")
+    print("=== benchmark (GFLOPS - higher is better; cast is pre-done) ===")
     bench()
