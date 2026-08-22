@@ -20,7 +20,7 @@ python bench.py --log    # also write the raw output to bench_output.txt
 
 For an engineer-reviewable causal-attention run, use the provenance collector.
 It runs correctness before performance and records the Git/source fingerprint,
-runtime and GPU environment, exact commands, raw logs, exit codes, and log
+runtime and GPU environment, exact commands, path-scrubbed logs, exit codes, and log
 hashes. The source-to-invariant map and claim boundaries are documented in
 [`docs/attention_evidence.md`](docs/attention_evidence.md).
 

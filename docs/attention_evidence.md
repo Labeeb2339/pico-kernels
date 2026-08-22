@@ -26,7 +26,7 @@ Those are deliberate boundaries, not implied features.
 | `attention.py::attn_fwd` | Applies `offs_m >= start_n + offs_n` before exponentiation | Mutating a future key/value cannot change an earlier query output | `tests/test_attention.py::test_attention_causality` |
 | `attention.py::attn_fwd` | Updates online-softmax state with `m_i`, `l_i`, and `alpha` | Output matches the mathematically direct fp32 eager implementation | `test_attention_matches_naive`, fp16 and bf16, `N ∈ {128,256,512}`, `atol=rtol=5e-2` |
 | `attention.py::triton_attention` | Checks device, dtype, shape, layout, tile divisibility, and head dimension before launch | Unsupported inputs fail before JIT launch with a specific exception | Input-contract tests in `tests/test_attention.py` |
-| `attention.py::bench` | Times eager, PyTorch SDPA, and this Triton kernel on identical tensors | Reported ratio equals baseline median latency divided by Triton median latency for that row | Raw `02-benchmark.stdout.txt` plus the receipt's source/environment hashes |
+| `attention.py::bench` | Times eager, PyTorch SDPA, and this Triton kernel on identical tensors | Reported ratio equals baseline median latency divided by Triton median latency for that row | Path-scrubbed `02-benchmark.stdout.txt` plus the receipt's source/environment hashes |
 
 ## Correctness guarantees—and no more
 
@@ -73,6 +73,9 @@ then does it benchmark. It writes:
 - `README.md`: human-readable receipt and interpretation boundary;
 - `01-correctness.stdout.txt` / `.stderr.txt`;
 - `02-benchmark.stdout.txt` / `.stderr.txt`.
+
+Captured logs preserve command output but replace the repository and home
+directory prefixes with `<repo>` and `<home>` before hashing and publication.
 
 Use `--metadata-only` for a safe provenance smoke test that does not run CUDA
 kernels. A release benchmark receipt should be generated from the exact commit

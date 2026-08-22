@@ -228,6 +228,24 @@ def command_string(command: Sequence[str]) -> str:
     return subprocess.list2cmdline(portable) if os.name == "nt" else shlex.join(portable)
 
 
+def scrub_local_paths(text: str) -> str:
+    """Keep captured logs useful without publishing developer-specific paths."""
+    replacements = (
+        (str(ROOT), "<repo>"),
+        (str(Path.home()), "<home>"),
+    )
+    scrubbed = text
+    for local_path, replacement in replacements:
+        variants = {
+            local_path,
+            local_path.replace("\\", "/"),
+            local_path.replace("/", "\\"),
+        }
+        for variant in sorted(variants, key=len, reverse=True):
+            scrubbed = scrubbed.replace(variant, replacement)
+    return scrubbed
+
+
 def run_and_log(label: str, command: Sequence[str], output_dir: Path) -> dict[str, Any]:
     started = datetime.now(timezone.utc)
     before = nvidia_smi_snapshot()
@@ -246,8 +264,8 @@ def run_and_log(label: str, command: Sequence[str], output_dir: Path) -> dict[st
 
     stdout_path = output_dir / f"{label}.stdout.txt"
     stderr_path = output_dir / f"{label}.stderr.txt"
-    stdout_path.write_text(result.stdout, encoding="utf-8")
-    stderr_path.write_text(result.stderr, encoding="utf-8")
+    stdout_path.write_text(scrub_local_paths(result.stdout), encoding="utf-8")
+    stderr_path.write_text(scrub_local_paths(result.stderr), encoding="utf-8")
     return {
         "label": label,
         "command": command_string(command),
@@ -258,6 +276,7 @@ def run_and_log(label: str, command: Sequence[str], output_dir: Path) -> dict[st
         "stdout_sha256": sha256_file(stdout_path),
         "stderr": stderr_path.relative_to(output_dir).as_posix(),
         "stderr_sha256": sha256_file(stderr_path),
+        "local_paths_scrubbed": True,
         "gpu_before": before,
         "gpu_after": after,
     }
