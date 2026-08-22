@@ -1,0 +1,3 @@
+# Preserve generated evidence exactly as captured so receipt SHA-256 values
+# remain verifiable from committed Git blobs on every platform.
+evidence/runs/** binary
