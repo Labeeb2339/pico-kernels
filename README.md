@@ -30,6 +30,15 @@ $run = Get-Date -Format 'yyyyMMdd-HHmmss'
   --output-dir "evidence\runs\$run-attention"
 ```
 
+The current checked-in receipt was captured from clean source commit
+[`b8d6936`](https://github.com/Labeeb2339/pico-kernels/commit/b8d69367116c06835ffe6ebf850b7c59cf05160c)
+on 2026-08-22. All nine attention correctness/API cases passed. Under the
+recorded fixed protocol, the Triton kernel measured **1.79x faster than PyTorch
+SDPA at N=4096** (1.927 ms versus 3.448 ms) and **1.84x at N=32768** (110.452 ms
+versus 203.525 ms). These are machine-specific medians, not portable speed
+guarantees. See the [receipt](evidence/runs/20260822-2332-attention/receipt.json)
+and [captured benchmark log](evidence/runs/20260822-2332-attention/02-benchmark.stdout.txt).
+
 ### GEMM
 
 Numbers are **Triton ÷ cuBLAS** (ratio of GFLOPS), so **> 1.0 means the

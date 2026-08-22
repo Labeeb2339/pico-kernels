@@ -1,0 +1,16 @@
+device: NVIDIA GeForce RTX 5070 Laptop GPU | triton 3.7.1
+=== correctness ===
+[torch.float16] vs fp32 naive: max abs err 1.953e-03 | allclose True
+[torch.float16] vs torch SDPA:  max abs err 9.766e-04
+[torch.bfloat16] vs fp32 naive: max abs err 7.812e-03 | allclose True
+[torch.bfloat16] vs torch SDPA:  max abs err 1.953e-03
+=== benchmark (ms, lower is better) ===
+protocol: fixed provider order eager -> SDPA -> Triton | warmup=25ms rep=100ms stat=median | seed=0 | B=4 H=8 D=64 fp16
+     N     eager      SDPA    triton  vs eager   vs SDPA
+----------------------------------------------------------
+   256    0.195m    0.037m    0.022m     8.92x     1.70x
+   512    1.108m    0.082m    0.046m    23.95x     1.78x
+  1024    4.369m    0.257m    0.142m    30.78x     1.81x
+  2048   17.305m    0.890m    0.480m    36.03x     1.85x
+  4096   68.710m    3.448m    1.927m    35.66x     1.79x
+ 32768       OOM  203.525m  110.452m         -     1.84x

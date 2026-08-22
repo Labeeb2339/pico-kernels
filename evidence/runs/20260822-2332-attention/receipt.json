@@ -1,0 +1,227 @@
+{
+  "commands": [
+    {
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_attention.py -vv",
+      "elapsed_seconds": 3.41622,
+      "exit_code": 0,
+      "gpu_after": {
+        "query": "name,driver_version,pstate,temperature.gpu,power.draw,power.limit,clocks.current.sm,clocks.current.memory",
+        "value": "NVIDIA GeForce RTX 5070 Laptop GPU, 592.15, P2, 56, 14.48, [N/A], 1582, 11001"
+      },
+      "gpu_before": {
+        "query": "name,driver_version,pstate,temperature.gpu,power.draw,power.limit,clocks.current.sm,clocks.current.memory",
+        "value": "NVIDIA GeForce RTX 5070 Laptop GPU, 592.15, P0, 56, 14.98, [N/A], 0, 12001"
+      },
+      "label": "01-correctness",
+      "local_paths_scrubbed": true,
+      "started_at_utc": "2026-08-22T15:32:33.696929+00:00",
+      "stderr": "01-correctness.stderr.txt",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout": "01-correctness.stdout.txt",
+      "stdout_sha256": "bac8e26b54c21869baa21763c022c179594bafa2bcea25893f875948e4b0f199"
+    },
+    {
+      "command": ".venv/Scripts/python.exe attention.py",
+      "elapsed_seconds": 8.249732,
+      "exit_code": 0,
+      "gpu_after": {
+        "query": "name,driver_version,pstate,temperature.gpu,power.draw,power.limit,clocks.current.sm,clocks.current.memory",
+        "value": "NVIDIA GeForce RTX 5070 Laptop GPU, 592.15, P0, 61, 13.71, [N/A], 1815, 12001"
+      },
+      "gpu_before": {
+        "query": "name,driver_version,pstate,temperature.gpu,power.draw,power.limit,clocks.current.sm,clocks.current.memory",
+        "value": "NVIDIA GeForce RTX 5070 Laptop GPU, 592.15, P2, 56, 14.48, [N/A], 1582, 11001"
+      },
+      "label": "02-benchmark",
+      "local_paths_scrubbed": true,
+      "started_at_utc": "2026-08-22T15:32:37.186118+00:00",
+      "stderr": "02-benchmark.stderr.txt",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout": "02-benchmark.stdout.txt",
+      "stdout_sha256": "3652e8150e08b9d479b130ebc9f232b9f2a348a61250acea7fba50f0fc2c6c8b"
+    }
+  ],
+  "completed_at_utc": "2026-08-22T15:32:45.672909+00:00",
+  "environment": {
+    "gpu": {
+      "compute_capability": [
+        12,
+        0
+      ],
+      "device_count": 1,
+      "name": "NVIDIA GeForce RTX 5070 Laptop GPU",
+      "total_memory_bytes": 8546484224
+    },
+    "nvidia_smi": {
+      "query": "name,driver_version,pstate,temperature.gpu,power.draw,power.limit,clocks.current.sm,clocks.current.memory",
+      "value": "NVIDIA GeForce RTX 5070 Laptop GPU, 592.15, P0, 56, 14.98, [N/A], 0, 12001"
+    },
+    "packages": {
+      "cuda-python": "13.3.1",
+      "numpy": "2.4.6",
+      "pytest": "9.1.1",
+      "torch": "2.11.0+cu128",
+      "triton": null,
+      "triton-windows": "3.7.1.post27"
+    },
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": {
+      "executable": ".venv/Scripts/python.exe",
+      "implementation": "CPython",
+      "version": "3.11.15"
+    },
+    "torch": {
+      "cuda_available": true,
+      "cuda_runtime": "12.8",
+      "cudnn": 91900,
+      "sdpa_backends": {
+        "cudnn_enabled": true,
+        "flash_enabled": true,
+        "math_enabled": true,
+        "memory_efficient_enabled": true
+      },
+      "version": "2.11.0+cu128"
+    },
+    "triton": {
+      "version": "3.7.1"
+    }
+  },
+  "generated_at_utc": "2026-08-22T15:32:29.461808+00:00",
+  "invariants": [
+    {
+      "claim": "Implements causal softmax(QK^T / sqrt(D))V with no dropout, bias, or padding mask.",
+      "evidence": "attention.attn_fwd and attention.eager_attention; numerical parity tests",
+      "id": "ATTN-SEM-001"
+    },
+    {
+      "claim": "Matches an fp32 eager reference and torch SDPA at atol=5e-2, rtol=5e-2.",
+      "evidence": "tests/test_attention.py::test_attention_matches_naive",
+      "id": "ATTN-NUM-001"
+    },
+    {
+      "claim": "Changing the final key/value cannot change earlier query outputs.",
+      "evidence": "tests/test_attention.py::test_attention_causality",
+      "id": "ATTN-CAUSAL-001"
+    },
+    {
+      "claim": "Output preserves q shape, dtype, and CUDA device; unsupported layouts fail explicitly.",
+      "evidence": "tests/test_attention.py output and input-contract assertions",
+      "id": "ATTN-API-001"
+    },
+    {
+      "claim": "The Triton kernel tiles K/V and never stores an N x N score tensor in global memory.",
+      "evidence": "static inspection of attention.attn_fwd; this is an implementation property, not a profiler measurement",
+      "id": "ATTN-MEM-001"
+    }
+  ],
+  "overall_exit_code": 0,
+  "protocol": {
+    "attention_benchmark": {
+      "measurement_ms": 100,
+      "provider_order": [
+        "eager",
+        "torch_sdpa",
+        "triton"
+      ],
+      "shapes": [
+        {
+          "B": 4,
+          "D": 64,
+          "H": 8,
+          "N": 256,
+          "dtype": "fp16"
+        },
+        {
+          "B": 4,
+          "D": 64,
+          "H": 8,
+          "N": 512,
+          "dtype": "fp16"
+        },
+        {
+          "B": 4,
+          "D": 64,
+          "H": 8,
+          "N": 1024,
+          "dtype": "fp16"
+        },
+        {
+          "B": 4,
+          "D": 64,
+          "H": 8,
+          "N": 2048,
+          "dtype": "fp16"
+        },
+        {
+          "B": 4,
+          "D": 64,
+          "H": 8,
+          "N": 4096,
+          "dtype": "fp16"
+        },
+        {
+          "B": 4,
+          "D": 64,
+          "H": 8,
+          "N": 32768,
+          "dtype": "fp16"
+        }
+      ],
+      "statistic": "median",
+      "warmup_ms": 25
+    },
+    "fail_fast": true,
+    "order": [
+      "correctness",
+      "benchmark"
+    ],
+    "seed": 0
+  },
+  "repository": {
+    "branch": "main",
+    "dirty": false,
+    "files": {
+      ".github/workflows/ci.yml": "84dc9c370a7937dc4fa439dc11843da3d42309a27f00021b482a98a3eb100586",
+      ".gitignore": "7786bf6dc9f5743f2d9da109369d36ab7f02d91c5e9e6f4f72b3b3f32ed12d4d",
+      "README.md": "e92973bbdaa3d73911da530023843572631b6b9cfbee3c3fe37198f4d622f293",
+      "attention.py": "6ad4e3e1739a62c16e17a96d6204a5320fd731e1a0d0dfc95da3cb0a5811916c",
+      "attention_bwd.py": "9643d1814d0efab21e4c9e332005035efaba83c556613a897f51ccc1a7d03d56",
+      "attention_gqa.py": "340cf22f640dd35bb73cf18faefe72cd0641d78d7589807e50b1d49235c14ee9",
+      "bench.py": "46cbad6b3fb2c82ece1563b2d63ee487dad2c83099c4f1a6ad4a5ff01f519d8e",
+      "docs/attention_evidence.md": "3fff5245451f6be05414756607d2b4393c3e113f5278494f93c0a9b99eb0b64d",
+      "docs/flash_attention.md": "53e8cd596f00514ccefc9ad8fa37e7a9aa5b10b76b3c0e070f193651c20cb49f",
+      "flash_decoding.py": "df3f79373f14e12cc75f78f249af4b3fa05d5fec68be47062dfed39fe6765655",
+      "gemm.py": "6de1e2681d43284d914155d8cb7abf4079f7fef8a9a21d0b773a52cd0a66ee87",
+      "gemm_fp8.py": "abf639392594843bb3103cc8301555c17dbc6eb794a3b85b7993902a5f88659c",
+      "gemm_int4.py": "4d91154a4b17ae20f573bad8654315f4b2102a3e3e459084830e45e3ba740bc9",
+      "gemm_splitk.py": "f0501870f828b1ab8f9a996d55810f546bfb2d8b5bd547af2f6e66a6b2052dee",
+      "quantize.py": "f7547f4ad8b9945dc312d087beb449b44292cd59254ac0786484f5e3220f86f2",
+      "raw_gemm.py": "c008236f32762f1d8e556bbd6579551c2c15b81fcf119e59b9d8c040440cb2cf",
+      "requirements-dev.txt": "b2cf40cfde63ffcd654d233d12aebeb06ea2092d1cbd22aa25c34efacfcfd804",
+      "requirements.txt": "ba5c57d893888bbbb152288b8145abff582bbb91dd7caf17cec85b28e285b298",
+      "scripts/collect_attention_evidence.py": "a372f392c6af3342536396d4a6e421cf8ee3b805cad770389070579cd28ba711",
+      "tests/test_attention.py": "4d22518ccbe52b4029dd8db375bad26691ef1a1f7ecb9df08b37396879c0954f",
+      "tests/test_attention_bwd.py": "6625d83f0f203ceb3f9328dcc28b30c2a142aea9a51296e0166fc8954683f94f",
+      "tests/test_attention_gqa.py": "386efff2a23b749ca71ba0d7dc4d83aafa8edc5d0d298dd5ca990d04ae82fc37",
+      "tests/test_flash_decoding.py": "2376fcda2a59a4cf955daed6cc0caac0a87cd124041bf9af17ce9885351e3110",
+      "tests/test_gemm.py": "6d1eb15e80224f4af99eb39d84464e17c28333c6b6cf789ad74db69a8bd40471",
+      "tests/test_gemm_fp8.py": "4b06dd53500868f2dfb3daae923a123d4ff846e62c036bb46050303f6e7026c1",
+      "tests/test_gemm_int4.py": "e93e984b3aa2dc84345bc163e92a9bea3325bc14ab8cb608c6bf46afad4831cf",
+      "tests/test_gemm_splitk.py": "6946858e85ed99612a385443dbcd9eb110404d53236416ee469d42b3a318d9ff",
+      "tests/test_quantize.py": "6b064d0b0558ea4a9248abbc12079fdf1fd796f154a70528f8af45b87035e9aa",
+      "tests/test_raw_gemm.py": "43958e8cdc4ad9319538b17be8f9d107d7ba4e192ccdbafbb6db21059f15b7f0"
+    },
+    "head": "b8d69367116c06835ffe6ebf850b7c59cf05160c",
+    "head_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "remote": "https://github.com/Labeeb2339/pico-kernels.git",
+    "source_tree_sha256": "9de483d51f893dc85a64dace88bac9e3c1f2494267bf97fcb2ef4554d45e8b50",
+    "status": []
+  },
+  "schema_version": 1,
+  "source_after_run": {
+    "head": "b8d69367116c06835ffe6ebf850b7c59cf05160c",
+    "head_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "source_tree_sha256": "9de483d51f893dc85a64dace88bac9e3c1f2494267bf97fcb2ef4554d45e8b50"
+  },
+  "source_stable_during_run": true
+}

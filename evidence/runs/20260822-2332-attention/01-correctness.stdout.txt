@@ -1,0 +1,17 @@
+============================= test session starts =============================
+platform win32 -- Python 3.11.15, pytest-9.1.1, pluggy-1.6.0 -- <repo>\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: <repo>
+collecting ... collected 9 items
+
+tests/test_attention.py::test_attention_matches_naive[128-dtype0] PASSED [ 11%]
+tests/test_attention.py::test_attention_matches_naive[128-dtype1] PASSED [ 22%]
+tests/test_attention.py::test_attention_matches_naive[256-dtype0] PASSED [ 33%]
+tests/test_attention.py::test_attention_matches_naive[256-dtype1] PASSED [ 44%]
+tests/test_attention.py::test_attention_matches_naive[512-dtype0] PASSED [ 55%]
+tests/test_attention.py::test_attention_matches_naive[512-dtype1] PASSED [ 66%]
+tests/test_attention.py::test_attention_causality PASSED                 [ 77%]
+tests/test_attention.py::test_attention_rejects_noncontiguous_input PASSED [ 88%]
+tests/test_attention.py::test_attention_rejects_unsupported_shape_and_dtype PASSED [100%]
+
+============================== 9 passed in 2.78s ==============================
